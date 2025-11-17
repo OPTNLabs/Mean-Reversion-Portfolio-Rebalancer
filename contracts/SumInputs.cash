@@ -1,0 +1,17 @@
+pragma cashscript ^0.13.0;
+
+contract SumInputs(int minTotalSats) {
+  function spend() {
+    int i = 0;
+    int total = 0;
+
+    // sum all input values – classic “aggregation” loop
+    do {
+      total = total + int(tx.inputs[i].value);
+      i = i + 1;
+    } while (i < tx.inputs.length);
+
+    // require at least minTotalSats in funding
+    require(total >= minTotalSats);
+  }
+}
