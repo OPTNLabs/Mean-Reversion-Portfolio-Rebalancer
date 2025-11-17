@@ -9,7 +9,11 @@
   "main": "index.js",
   "type": "module",
   "scripts": {
-    "start": "node index.js",
+    "fund": "node scripts/runWithAutoGit.js fund",
+    "fund-small": "node scripts/runWithAutoGit.js fund-small",
+    "spend": "node scripts/runWithAutoGit.js spend",
+    "both": "node scripts/runWithAutoGit.js both",
+    "small-cycle": "node scripts/runWithAutoGit.js small-cycle",
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],
