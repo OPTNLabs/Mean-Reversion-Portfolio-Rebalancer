@@ -28,13 +28,13 @@ export const alicePub = secp256k1.derivePublicKeyCompressed(
 export const alicePriv = aliceNode.privateKey;
 export const alicePkh = hash160(alicePub);
 export const aliceAddress = encodeCashAddress({
-  prefix: "bitcoincash",
+  prefix: "bchtest",
   type: "p2pkh",
   payload: alicePkh,
   throwErrors: true,
 }).address;
 export const aliceTokenAddress = encodeCashAddress({
-  prefix: "bitcoincash",
+  prefix: "bchtest",
   type: "p2pkhWithTokens",
   payload: alicePkh,
   throwErrors: true,

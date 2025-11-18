@@ -14,6 +14,12 @@
     "spend": "node scripts/runWithAutoGit.js spend",
     "both": "node scripts/runWithAutoGit.js both",
     "small-cycle": "node scripts/runWithAutoGit.js small-cycle",
+
+    "burn-tokens": "node scripts/burnAllTokensFromAlice.js",
+    "mint-rebal-nft": "node scripts/mintRebalancerNftForAlice.js",
+    "mint-tokens": "node scripts/mintTokensForAlice.js",
+    "mean-revert-demo": "node scripts/meanRevertSingleTokenNFTDemo.js",
+
     "test": "echo \"Error: no test specified\" && exit 1"
   },
   "keywords": [],

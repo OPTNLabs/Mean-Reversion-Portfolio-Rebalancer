@@ -1,0 +1,124 @@
+pragma cashscript ^0.13.0;
+
+/**
+ * MeanRevertSingleTokenNFTAuth (PoC)
+ *
+ * - Tracks a single FT token category for mean reversion.
+ * - Rebalance is permitted ONLY if caller provides an NFT with:
+ *     * tokenCategory == rebalancerNftCat
+ *     * nftCommitment == rebalancerNftCommit
+ *     * tokenAmount == 0 (pure NFT)
+ *   (Capability is NOT restricted – none/mutable/minting all allowed.)
+ * - Drain path is still restricted to ownerPkh (Alice) for safe disposal.
+ *
+ * Params:
+ *   tokenCategory        = fungible token for portfolio (VM-order bytes)
+ *   targetTokenAmount    = desired total FT amount (oracle / strategy)
+ *   rebalancerNftCat     = NFT category required for rebalancing (VM-order)
+ *   rebalancerNftCommit  = NFT commitment required (e.g. unique ID)
+ *   ownerPkh             = fallback owner P2PKH for drain()
+ */
+contract MeanRevertSingleTokenNFTAuth(
+    bytes   tokenCategory,
+    int     targetTokenAmount,
+    bytes   rebalancerNftCat,
+    bytes   rebalancerNftCommit,
+    bytes20 ownerPkh
+) {
+    /**
+     * Rebalance (NFT-authorized)
+     *
+     * Rules:
+     *  - Transaction MUST include at least one input with:
+     *      * tokenCategory == rebalancerNftCat
+     *      * nftCommitment == rebalancerNftCommit
+     *      * tokenAmount == 0 (pure NFT)
+     *    (Capability is not restricted.)
+     *  - Performs mean-reversion check over this contract's FT holdings:
+     *        |newTokens - target| <= |oldTokens - target|
+     *
+     * NFTs are NOT required to appear in outputs or touch the treasury;
+     * they simply act as an access token for calling rebalance().
+     */
+    function rebalance() {
+        // ---- NFT authority check (at least 1 matching NFT input) ----
+        bool hasNftAuthority = false;
+        int k = 0;
+
+        do {
+            if (tx.inputs[k].tokenCategory == rebalancerNftCat) {
+                if (tx.inputs[k].nftCommitment == rebalancerNftCommit) {
+                    // NFT = 0 fungible amount
+                    if (tx.inputs[k].tokenAmount == 0) {
+                        hasNftAuthority = true;
+                    }
+                }
+            }
+            k = k + 1;
+        } while (k < tx.inputs.length);
+
+        require(hasNftAuthority);
+
+        // ---- Anchor to this contract ----
+        bytes contractLocking = this.activeBytecode;
+
+        // ---- INPUT token total for this contract ----
+        int i = 0;
+        int oldTokens = 0;
+        int contractInputs = 0;
+
+        do {
+            if (tx.inputs[i].lockingBytecode == contractLocking) {
+                if (tx.inputs[i].tokenCategory == tokenCategory) {
+                    oldTokens = oldTokens + tx.inputs[i].tokenAmount;
+                }
+                contractInputs = contractInputs + 1;
+            }
+            i = i + 1;
+        } while (i < tx.inputs.length);
+
+        // ---- OUTPUT token total for this contract ----
+        int j = 0;
+        int newTokens = 0;
+        int contractOutputs = 0;
+
+        do {
+            if (tx.outputs[j].lockingBytecode == contractLocking) {
+                if (tx.outputs[j].tokenCategory == tokenCategory) {
+                    newTokens = newTokens + tx.outputs[j].tokenAmount;
+                }
+                contractOutputs = contractOutputs + 1;
+            }
+            j = j + 1;
+        } while (j < tx.outputs.length);
+
+        require(contractInputs > 0);
+        require(contractOutputs > 0);
+
+        // ---- distance before ----
+        int distBefore = oldTokens - targetTokenAmount;
+        if (distBefore < 0) distBefore = -distBefore;
+
+        // ---- distance after ----
+        int distAfter = newTokens - targetTokenAmount;
+        if (distAfter < 0) distAfter = -distAfter;
+
+        // Mean-reversion invariant: new allocation must be at least as
+        // close to target as the previous allocation.
+        require(distAfter <= distBefore);
+    }
+
+    /**
+     * Drain (owner P2PKH)
+     *
+     * Safety escape hatch: Alice (ownerPkh) can always fully empty
+     * the contract, regardless of NFTs.
+     */
+    function drain(pubkey ownerPk, sig ownerSig) {
+        require(hash160(ownerPk) == ownerPkh);
+        require(checkSig(ownerSig, ownerPk));
+
+        // No further constraints → free form spend:
+        // all BCH + tokens can go straight back to Alice.
+    }
+}

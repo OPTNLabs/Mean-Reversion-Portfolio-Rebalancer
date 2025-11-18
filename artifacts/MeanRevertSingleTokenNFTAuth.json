@@ -1,0 +1,82 @@
+{
+  "contractName": "MeanRevertSingleTokenNFTAuth",
+  "constructorInputs": [
+    {
+      "name": "tokenCategory",
+      "type": "bytes"
+    },
+    {
+      "name": "targetTokenAmount",
+      "type": "int"
+    },
+    {
+      "name": "rebalancerNftCat",
+      "type": "bytes"
+    },
+    {
+      "name": "rebalancerNftCommit",
+      "type": "bytes"
+    },
+    {
+      "name": "ownerPkh",
+      "type": "bytes20"
+    }
+  ],
+  "abi": [
+    {
+      "name": "rebalance",
+      "inputs": []
+    },
+    {
+      "name": "drain",
+      "inputs": [
+        {
+          "name": "ownerPk",
+          "type": "pubkey"
+        },
+        {
+          "name": "ownerSig",
+          "type": "sig"
+        }
+      ]
+    }
+  ],
+  "bytecode": "OP_5 OP_PICK OP_0 OP_NUMEQUAL OP_IF OP_0 OP_0 OP_BEGIN OP_DUP OP_UTXOTOKENCATEGORY OP_5 OP_PICK OP_EQUAL OP_IF OP_DUP OP_UTXOTOKENCOMMITMENT OP_6 OP_PICK OP_EQUAL OP_IF OP_DUP OP_UTXOTOKENAMOUNT OP_0 OP_NUMEQUAL OP_IF OP_1 OP_ROT OP_DROP OP_SWAP OP_ENDIF OP_ENDIF OP_ENDIF OP_DUP OP_1ADD OP_NIP OP_DUP OP_TXINPUTCOUNT OP_GREATERTHANOREQUAL OP_UNTIL OP_SWAP OP_VERIFY OP_ACTIVEBYTECODE OP_0 OP_0 OP_0 OP_BEGIN OP_2 OP_PICK OP_UTXOBYTECODE OP_4 OP_PICK OP_EQUAL OP_IF OP_2 OP_PICK OP_UTXOTOKENCATEGORY OP_6 OP_PICK OP_EQUAL OP_IF OP_OVER OP_3 OP_PICK OP_UTXOTOKENAMOUNT OP_ADD OP_ROT OP_DROP OP_SWAP OP_ENDIF OP_DUP OP_1ADD OP_NIP OP_ENDIF OP_2 OP_PICK OP_1ADD OP_3 OP_ROLL OP_DROP OP_SWAP OP_TOALTSTACK OP_SWAP OP_FROMALTSTACK OP_2 OP_PICK OP_TXINPUTCOUNT OP_GREATERTHANOREQUAL OP_UNTIL OP_0 OP_0 OP_0 OP_BEGIN OP_2 OP_PICK OP_OUTPUTBYTECODE OP_7 OP_PICK OP_EQUAL OP_IF OP_2 OP_PICK OP_OUTPUTTOKENCATEGORY OP_9 OP_PICK OP_EQUAL OP_IF OP_OVER OP_3 OP_PICK OP_OUTPUTTOKENAMOUNT OP_ADD OP_ROT OP_DROP OP_SWAP OP_ENDIF OP_DUP OP_1ADD OP_NIP OP_ENDIF OP_2 OP_PICK OP_1ADD OP_3 OP_ROLL OP_DROP OP_SWAP OP_TOALTSTACK OP_SWAP OP_FROMALTSTACK OP_2 OP_PICK OP_TXOUTPUTCOUNT OP_GREATERTHANOREQUAL OP_UNTIL OP_3 OP_ROLL OP_0 OP_GREATERTHAN OP_VERIFY OP_0 OP_GREATERTHAN OP_VERIFY OP_ROT OP_7 OP_PICK OP_SUB OP_DUP OP_0 OP_LESSTHAN OP_IF OP_DUP OP_NEGATE OP_NIP OP_ENDIF OP_SWAP OP_7 OP_ROLL OP_SUB OP_DUP OP_0 OP_LESSTHAN OP_IF OP_DUP OP_NEGATE OP_NIP OP_ENDIF OP_GREATERTHANOREQUAL OP_VERIFY OP_2DROP OP_2DROP OP_2DROP OP_2DROP OP_DROP OP_1 OP_ELSE OP_5 OP_ROLL OP_1 OP_NUMEQUALVERIFY OP_5 OP_PICK OP_HASH160 OP_5 OP_ROLL OP_EQUALVERIFY OP_2ROT OP_CHECKSIGVERIFY OP_2DROP OP_2DROP OP_1 OP_ENDIF",
+  "source": "pragma cashscript ^0.13.0;\n\n/**\n * MeanRevertSingleTokenNFTAuth (PoC)\n *\n * - Tracks a single FT token category for mean reversion.\n * - Rebalance is permitted ONLY if caller provides an NFT with:\n *     * tokenCategory == rebalancerNftCat\n *     * nftCommitment == rebalancerNftCommit\n *     * tokenAmount == 0 (pure NFT)\n *   (Capability is NOT restricted – none/mutable/minting all allowed.)\n * - Drain path is still restricted to ownerPkh (Alice) for safe disposal.\n *\n * Params:\n *   tokenCategory        = fungible token for portfolio (VM-order bytes)\n *   targetTokenAmount    = desired total FT amount (oracle / strategy)\n *   rebalancerNftCat     = NFT category required for rebalancing (VM-order)\n *   rebalancerNftCommit  = NFT commitment required (e.g. unique ID)\n *   ownerPkh             = fallback owner P2PKH for drain()\n */\ncontract MeanRevertSingleTokenNFTAuth(\n    bytes   tokenCategory,\n    int     targetTokenAmount,\n    bytes   rebalancerNftCat,\n    bytes   rebalancerNftCommit,\n    bytes20 ownerPkh\n) {\n    /**\n     * Rebalance (NFT-authorized)\n     *\n     * Rules:\n     *  - Transaction MUST include at least one input with:\n     *      * tokenCategory == rebalancerNftCat\n     *      * nftCommitment == rebalancerNftCommit\n     *      * tokenAmount == 0 (pure NFT)\n     *    (Capability is not restricted.)\n     *  - Performs mean-reversion check over this contract's FT holdings:\n     *        |newTokens - target| <= |oldTokens - target|\n     *\n     * NFTs are NOT required to appear in outputs or touch the treasury;\n     * they simply act as an access token for calling rebalance().\n     */\n    function rebalance() {\n        // ---- NFT authority check (at least 1 matching NFT input) ----\n        bool hasNftAuthority = false;\n        int k = 0;\n\n        do {\n            if (tx.inputs[k].tokenCategory == rebalancerNftCat) {\n                if (tx.inputs[k].nftCommitment == rebalancerNftCommit) {\n                    // NFT = 0 fungible amount\n                    if (tx.inputs[k].tokenAmount == 0) {\n                        hasNftAuthority = true;\n                    }\n                }\n            }\n            k = k + 1;\n        } while (k < tx.inputs.length);\n\n        require(hasNftAuthority);\n\n        // ---- Anchor to this contract ----\n        bytes contractLocking = this.activeBytecode;\n\n        // ---- INPUT token total for this contract ----\n        int i = 0;\n        int oldTokens = 0;\n        int contractInputs = 0;\n\n        do {\n            if (tx.inputs[i].lockingBytecode == contractLocking) {\n                if (tx.inputs[i].tokenCategory == tokenCategory) {\n                    oldTokens = oldTokens + tx.inputs[i].tokenAmount;\n                }\n                contractInputs = contractInputs + 1;\n            }\n            i = i + 1;\n        } while (i < tx.inputs.length);\n\n        // ---- OUTPUT token total for this contract ----\n        int j = 0;\n        int newTokens = 0;\n        int contractOutputs = 0;\n\n        do {\n            if (tx.outputs[j].lockingBytecode == contractLocking) {\n                if (tx.outputs[j].tokenCategory == tokenCategory) {\n                    newTokens = newTokens + tx.outputs[j].tokenAmount;\n                }\n                contractOutputs = contractOutputs + 1;\n            }\n            j = j + 1;\n        } while (j < tx.outputs.length);\n\n        require(contractInputs > 0);\n        require(contractOutputs > 0);\n\n        // ---- distance before ----\n        int distBefore = oldTokens - targetTokenAmount;\n        if (distBefore < 0) distBefore = -distBefore;\n\n        // ---- distance after ----\n        int distAfter = newTokens - targetTokenAmount;\n        if (distAfter < 0) distAfter = -distAfter;\n\n        // Mean-reversion invariant: new allocation must be at least as\n        // close to target as the previous allocation.\n        require(distAfter <= distBefore);\n    }\n\n    /**\n     * Drain (owner P2PKH)\n     *\n     * Safety escape hatch: Alice (ownerPkh) can always fully empty\n     * the contract, regardless of NFTs.\n     */\n    function drain(pubkey ownerPk, sig ownerSig) {\n        require(hash160(ownerPk) == ownerPkh);\n        require(checkSig(ownerSig, ownerPk));\n\n        // No further constraints → free form spend:\n        // all BCH + tokens can go straight back to Alice.\n    }\n}\n",
+  "debug": {
+    "bytecode": "5579009c6300006576ce5579876376cf5679876376d0009c63517b757c686868768b7776c3a2667c69c1000000655279c7547987635279ce56798763785379d0937b757c68768b776852798b537a757c6b7c6c5279c3a266000000655279cd577987635279d159798763785379d3937b757c68768b776852798b537a757c6b7c6c5279c4a266537a00a06900a0697b57799476009f63768f77687c577a9476009f63768f7768a2696d6d6d6d755167557a519d5579a9557a8871ad6d6d5168",
+    "sourceMap": "43:4:109:5;;;;;45:31:45:36;46:16:46:17;48:8:58:39;49:26:49:27;:16::42:1;:46::62:0;;:16:::1;:64:56:13:0;50:30:50:31;:20::46:1;:50::69:0;;:20:::1;:71:55:17:0;52:34:52:35;:24::48:1;:52::53:0;:24:::1;:55:54:21:0;53:42:53:46;:24::47:1;;;52:55:54:21;50:71:55:17;49:64:56:13;57:16:57:17:0;:::21:1;:12::22;58:17:58:18:0;:21::37;48:8::39:1;;60:16:60:31:0;:8::33:1;63:32:63:51:0;66:16:66:17;67:24:67:25;68:29:68:30;70:8:78:39;71:26:71:27;;:16::44:1;:48::63:0;;:16:::1;:65:76:13:0;72:30:72:31;;:20::46:1;:50::63:0;;:20:::1;:65:74:17:0;73:32:73:41;:54::55;;:44::68:1;:32;:20::69;;;72:65:74:17;75:33:75:47:0;:::51:1;:16::52;71:65:76:13;77:16:77:17:0;;:::21:1;:12::22;;;;;;;78:17:78:18:0;;:21::37;70:8::39:1;;81:16:81:17:0;82:24:82:25;83:30:83:31;85:8:93:40;86:27:86:28;;:16::45:1;:49::64:0;;:16:::1;:66:91:13:0;87:31:87:32;;:20::47:1;:51::64:0;;:20:::1;:66:89:17:0;88:32:88:41;:55::56;;:44::69:1;:32;:20::70;;;87:66:89:17;90:34:90:49:0;:::53:1;:16::54;86:66:91:13;92:16:92:17:0;;:::21:1;:12::22;;;;;;;93:17:93:18:0;;:21::38;85:8::40:1;;95:16:95:30:0;;:33::34;:16:::1;:8::36;96:34:96:35:0;:16:::1;:8::37;99:25:99:34:0;:37::54;;:25:::1;100:12:100:22:0;:25::26;:12:::1;:28::53:0;:42::52;:41:::1;:28::53;;103:24:103:33:0;:36::53;;:24:::1;104:12:104:21:0;:24::25;:12:::1;:27::50:0;:40::49;:39:::1;:27::50;;108:16:108:39;:8::41;43:4:109:5;;;;;;;117::123::0;;;;118:24:118:31;;:16::32:1;:36::44:0;;:8::46:1;119:25:119:42:0;:8::45:1;117:4:123:5;;;21:0:124:1",
+    "logs": [],
+    "requires": [
+      {
+        "ip": 45,
+        "line": 60
+      },
+      {
+        "ip": 143,
+        "line": 95
+      },
+      {
+        "ip": 146,
+        "line": 96
+      },
+      {
+        "ip": 172,
+        "line": 108
+      },
+      {
+        "ip": 189,
+        "line": 118
+      },
+      {
+        "ip": 191,
+        "line": 119
+      }
+    ]
+  },
+  "compiler": {
+    "name": "cashc",
+    "version": "0.13.0-next.1"
+  },
+  "updatedAt": "2025-11-18T03:35:18.330Z"
+}

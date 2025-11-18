@@ -1,21 +1,17 @@
 // scripts/spendContractToAlice.js
 import { TransactionBuilder } from "cashscript";
-import {
-  SATS_PER_BYTE,
-  DUST_THRESHOLD,
-  SPEND_SPLIT_OUTPUTS,
-} from "../config.js";
+import { SATS_PER_BYTE, DUST_THRESHOLD } from "../config.js";
 import { aliceAddress } from "../common.js";
 import { logAddressState, logContractState } from "../utxos.js";
 import { getProviderAndContract } from "../contract.js";
 
 /**
  * Spend all contract UTXOs back to a single address,
- * splitting the final amount into several smaller UTXOs.
+ * merging them into ONE big BCH UTXO.
  *
  * Two-pass 1 sat/byte fee estimation:
- *  - Pass 1: assume 0-fee, build tx with N outputs
- *  - Pass 2: recompute outputs so sum = totalIn - fee
+ *  - Pass 1: assume 0-fee, build tx with a single output
+ *  - Pass 2: recompute the single output so amount = totalIn - fee
  */
 async function spendContractToAddress({ provider, contract, toAddress }) {
   const contractUtxos = await logContractState(
@@ -32,15 +28,8 @@ async function spendContractToAddress({ provider, contract, toAddress }) {
 
   await logAddressState("Alice (before contract spend)", provider, toAddress);
 
-  // Decide a provisional number of outputs for pass 1
-  const maxOutputsByDust = Number(totalIn / DUST_THRESHOLD) || 1;
-  const initialOutputs = Math.max(
-    1,
-    Math.min(SPEND_SPLIT_OUTPUTS, maxOutputsByDust)
-  );
-
   // ─────────────────────────────────────────────
-  // PASS 1: provisional tx (fee=0) with initialOutputs outputs
+  // PASS 1: provisional tx (fee=0) with a single output
   // ─────────────────────────────────────────────
   const builder1 = new TransactionBuilder({ provider });
 
@@ -48,14 +37,11 @@ async function spendContractToAddress({ provider, contract, toAddress }) {
     builder1.addInput(u, contract.unlock.spend());
   }
 
-  const perOutputProvisional = totalIn / BigInt(initialOutputs);
-
-  for (let i = 0; i < initialOutputs; i++) {
-    builder1.addOutput({
-      to: toAddress,
-      amount: perOutputProvisional,
-    });
-  }
+  // provisional output uses the full totalIn – just for size estimation
+  builder1.addOutput({
+    to: toAddress,
+    amount: totalIn,
+  });
 
   const provisionalHex = await builder1.build();
   const byteLength = BigInt(provisionalHex.length / 2);
@@ -70,33 +56,16 @@ async function spendContractToAddress({ provider, contract, toAddress }) {
     throw new Error("[spend] Final amount is non-positive after fee.");
   }
 
-  // Decide real number of outputs given dust constraints
-  let outputsCount = Math.max(
-    1,
-    Math.min(SPEND_SPLIT_OUTPUTS, Number(finalAmount / DUST_THRESHOLD) || 1)
-  );
-
-  // Ensure each output is above dust
-  let base = finalAmount / BigInt(outputsCount);
-  while (outputsCount > 1 && base < DUST_THRESHOLD) {
-    outputsCount -= 1;
-    base = finalAmount / BigInt(outputsCount);
+  if (finalAmount < DUST_THRESHOLD) {
+    throw new Error(
+      `[spend] Final output ${finalAmount} below dust threshold ${DUST_THRESHOLD}.`
+    );
   }
 
-  if (base < DUST_THRESHOLD) {
-    // fall back to a single output if even that fails
-    outputsCount = 1;
-    base = finalAmount;
-  }
-
-  const remainder = finalAmount % BigInt(outputsCount);
-
-  console.log(
-    `[spend] Final outputs: ${outputsCount} → base=${base} sats, remainder=${remainder} sats`
-  );
+  console.log(`[spend] Single merged output amount: ${finalAmount} sats`);
 
   // ─────────────────────────────────────────────
-  // PASS 2: final tx with outputsCount outputs
+  // PASS 2: final tx with single merged output
   // ─────────────────────────────────────────────
   const builder2 = new TransactionBuilder({ provider });
 
@@ -104,28 +73,17 @@ async function spendContractToAddress({ provider, contract, toAddress }) {
     builder2.addInput(u, contract.unlock.spend());
   }
 
-  for (let i = 0; i < outputsCount; i++) {
-    const extra = i === outputsCount - 1 ? remainder : 0n;
-    const amount = base + extra;
-
-    if (amount < DUST_THRESHOLD) {
-      throw new Error(
-        `[spend] Output #${i} amount ${amount} below dust threshold ${DUST_THRESHOLD}.`
-      );
-    }
-
-    builder2.addOutput({
-      to: toAddress,
-      amount,
-    });
-  }
+  builder2.addOutput({
+    to: toAddress,
+    amount: finalAmount,
+  });
 
   const txDetails = await builder2.send();
   console.log("\n[spend] Contract spend tx broadcast:", txDetails);
 
   if (txDetails?.hex) {
     const finalBytes = BigInt(txDetails.hex.length / 2);
-    const actualFee = totalIn - finalAmount;
+    const actualFee = fee; // same formula: totalIn - finalAmount
     console.log(
       `[spend] Final size: ${finalBytes} bytes → actual fee = ${actualFee} sats`
     );
@@ -139,7 +97,7 @@ async function spendContractToAddress({ provider, contract, toAddress }) {
 
 /**
  * Script entry: spend contract funds back to Alice,
- * splitting into several smaller UTXOs on Alice's side.
+ * merging into a single large UTXO on Alice's side.
  */
 export async function runSpendContractToAlice() {
   const { provider, contract } = getProviderAndContract();
