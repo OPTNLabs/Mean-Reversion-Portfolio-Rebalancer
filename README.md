@@ -12,18 +12,22 @@ loops
 │  ├─ MeanRevertSingleTokenNFTAuth.cash
 │  └─ SumInputs.cash
 ├─ index.js
-├─ package-lock.json
-├─ package.json
-├─ scripts
+├─ legacy
 │  ├─ autoGit.js
-│  ├─ burnAllTokensFromAlice.js
 │  ├─ fundContractFromAlice.js
-│  ├─ meanRevertSingleTokenNFTDemo.js
+│  ├─ meanRevertRoundtrip.js
+│  ├─ meanRevertSingleTokenNFTDemo.mjs
 │  ├─ mintRebalancerNftForAlice.js
 │  ├─ mintTokensForAlice.js
 │  ├─ runWithAutoGit.js
 │  ├─ spendContractToAlice.js
 │  └─ tokenContractRoundtrip.js
+├─ package-lock.json
+├─ package.json
+├─ scripts
+│  ├─ burnAllTokensFromAlice.js
+│  ├─ meanRevert.js
+│  └─ mintAllForAlice.js
 └─ utxos.js
 
 ```

@@ -5,8 +5,7 @@
 //  - Creating a single BCH-only output back to aliceTokenAddress
 //    with NO token field (all tokens are burned).
 //
-// Run:
-//   node scripts/burnAllTokensFromAlice.js
+// Intended use: "reset" local demo token state while keeping BCH value.
 
 import {
   ElectrumNetworkProvider,
@@ -15,7 +14,11 @@ import {
 } from "cashscript";
 import { NETWORK, SATS_PER_BYTE, DUST_THRESHOLD } from "../config.js";
 import { alicePriv, aliceTokenAddress } from "../common.js";
-import { splitByToken, logAddressState } from "../utxos.js";
+import {
+  splitByToken,
+  logAddressState,
+  logTokenUtxosDetailed,
+} from "../utxos.js";
 import { formatSats } from "../bigint.js";
 
 function utxoValueBigInt(utxo) {
@@ -24,36 +27,45 @@ function utxoValueBigInt(utxo) {
   return BigInt(v);
 }
 
-async function main() {
-  const provider = new ElectrumNetworkProvider(NETWORK);
-  const aliceTemplate = new SignatureTemplate(alicePriv);
-
+export async function runBurnAllTokensFromAlice() {
   console.log("=========================================");
   console.log(" Burn ALL tokens from aliceTokenAddress");
   console.log("=========================================\n");
+  console.log(`[network] Using NETWORK="${NETWORK}"\n`);
+  console.log(`[addr] aliceTokenAddress: ${aliceTokenAddress}\n`);
 
-  // Show current state & get raw UTXOs
+  const provider = new ElectrumNetworkProvider(NETWORK);
+  const aliceTemplate = new SignatureTemplate(alicePriv);
+
   const aliceUtxos = await logAddressState(
     "Alice (before burn, token address)",
     provider,
     aliceTokenAddress
   );
 
-  const { withTokens } = splitByToken(aliceUtxos);
+  const { withTokens, bchOnly } = splitByToken(aliceUtxos);
+
+  console.log(
+    `\n[analysis] Token-bearing UTXOs: ${withTokens.length}, BCH-only UTXOs: ${bchOnly.length}`
+  );
+
   if (!withTokens.length) {
     console.log("\n✅ No token UTXOs found for Alice. Nothing to burn.");
     return;
   }
 
+  logTokenUtxosDetailed("Alice token", withTokens);
+
   console.log(`\nFound ${withTokens.length} token UTXO(s) to burn.`);
 
-  // Sum the BCH value backing those token UTXOs
   let totalInput = 0n;
   for (const utxo of withTokens) {
     totalInput += utxoValueBigInt(utxo);
   }
 
-  console.log(`Total backing value in token UTXOs: ${formatSats(totalInput)}`);
+  console.log(
+    `Total backing value in token UTXOs: ${formatSats(totalInput)} (sats)`
+  );
 
   if (totalInput <= DUST_THRESHOLD) {
     throw new Error(
@@ -62,23 +74,23 @@ async function main() {
     );
   }
 
-  // ─────────────────────────────────────────────
-  // PASS 1: provisional tx with fee=0 to estimate size
-  // ─────────────────────────────────────────────
+  // PASS 1 – fee estimate
+  console.log(
+    "\n[pass1] Building provisional burn transaction for fee estimate..."
+  );
+
   const builder1 = new TransactionBuilder({
     provider,
-    allowImplicitFungibleTokenBurn: true, // ✅ explicitly allow burning
+    allowImplicitFungibleTokenBurn: true,
   });
 
-  // Inputs: all token-bearing UTXOs from aliceTokenAddress
   for (const utxo of withTokens) {
     builder1.addInput(utxo, aliceTemplate.unlockP2PKH());
   }
 
-  // One BCH-only output back to Alice (no token field)
   builder1.addOutput({
     to: aliceTokenAddress,
-    amount: totalInput, // provisional; we'll subtract fee in pass 2
+    amount: totalInput,
   });
 
   const provisionalHex = await builder1.build();
@@ -86,28 +98,28 @@ async function main() {
   const fee = byteLength * SATS_PER_BYTE;
 
   console.log(
-    `\n[burn] Provisional size: ${byteLength} bytes → estimated fee = ${fee} sats`
+    `\n[pass1] Provisional size: ${byteLength} bytes @ ${SATS_PER_BYTE} sat/byte → estimated fee = ${fee} sats`
   );
 
   const finalAmount = totalInput - fee;
+  console.log(
+    `[pass1] Expected BCH-only output (after fee): ${formatSats(finalAmount)}`
+  );
+
   if (finalAmount < DUST_THRESHOLD) {
     throw new Error(
       `After paying estimated fee (${fee} sats), remaining amount ` +
-        `(${finalAmount} sats) would be below dust threshold (${DUST_THRESHOLD} sats). ` +
+        `(${finalAmount} sats) would be below dust threshold (${DUST_THRESHOLD} sats).\n` +
         `Aborting burn – consider adding a BCH-only UTXO or using fewer token UTXOs.`
     );
   }
 
-  console.log(
-    `[burn] Final BCH-only output amount after fee: ${formatSats(finalAmount)}`
-  );
+  // PASS 2 – final tx
+  console.log("\n[pass2] Building FINAL burn transaction...");
 
-  // ─────────────────────────────────────────────
-  // PASS 2: final tx with correct fee & output amount
-  // ─────────────────────────────────────────────
   const builder2 = new TransactionBuilder({
     provider,
-    allowImplicitFungibleTokenBurn: true, // ✅ also here
+    allowImplicitFungibleTokenBurn: true,
   });
 
   for (const utxo of withTokens) {
@@ -117,7 +129,6 @@ async function main() {
   builder2.addOutput({
     to: aliceTokenAddress,
     amount: finalAmount,
-    // IMPORTANT: no `token` field here → all input tokens are burned
   });
 
   const txDetails = await builder2.send();
@@ -140,8 +151,3 @@ async function main() {
 
   console.log("\n✅ All selected token UTXOs were burned to a BCH-only UTXO.");
 }
-
-main().catch((err) => {
-  console.error("\n❌ Error in burnAllTokensFromAlice:", err);
-  process.exit(1);
-});

@@ -1,85 +1,88 @@
 // index.js
-import {
-  runFundContractFromAlice,
-  runFundManySmallToContract,
-} from "./scripts/fundContractFromAlice.js";
-import { runSpendContractToAlice } from "./scripts/spendContractToAlice.js";
-import { runMintTokensForAlice } from "./scripts/mintTokensForAlice.js";
-import { runTokenContractRoundtrip } from "./scripts/tokenContractRoundtrip.js";
+//
+// Root CLI orchestrator for the loops demo.
+//
+// Commands (node index.js <cmd>):
+//   mint-all       → Mint FT + NFT (atomic) to aliceTokenAddress
+//   burn-tokens    → Burn ALL tokens from aliceTokenAddress
+//   mean-fund      → Send FT from Alice → MeanRevert contract
+//   mean-rebalance → NFT-authorised rebalance()
+//   mean-roundtrip → fund + rebalance in one go
+//   mean-drain     → Drain ALL contract funds back to Alice
+//   status         → Print UTXO summaries for Alice P2PKH + token address
+//
+// Live scripts use ElectrumNetworkProvider on NETWORK (see config.js).
+// Tests (under ./tests) use MockNetworkProvider (local mocknet).
 
-import { aliceAddress } from "./common.js";
-import { getProviderAndContract } from "./contract.js";
-import { splitByToken } from "./utxos.js";
-import { SMALL_FUNDING_AMOUNT, SMALL_FUND_COUNT } from "./config.js";
+import { ElectrumNetworkProvider } from "cashscript";
+
+import { runMintAllForAlice } from "./scripts/mintAllForAlice.js";
+import { runBurnAllTokensFromAlice } from "./scripts/burnAllTokensFromAlice.js";
+import {
+  runMeanRevertFund,
+  runMeanRevertRebalance,
+  runMeanRevertRoundtrip,
+  runMeanRevertDrainAll,
+} from "./scripts/meanRevert.js";
+
+import { aliceAddress, aliceTokenAddress } from "./common.js";
+import { NETWORK } from "./config.js";
+import { logAddressState } from "./utxos.js";
+
+async function showStatus() {
+  console.log("=========================================");
+  console.log("  ADDRESS STATUS (live network)");
+  console.log("=========================================\n");
+  console.log(`[network] Using NETWORK="${NETWORK}"\n`);
+
+  const provider = new ElectrumNetworkProvider(NETWORK);
+
+  await logAddressState("Alice (main P2PKH)", provider, aliceAddress);
+  await logAddressState(
+    "Alice (token P2PKH+tokens)",
+    provider,
+    aliceTokenAddress
+  );
+}
 
 async function main() {
-  const cmd = process.argv[2] ?? "fund";
+  const cmd = process.argv[2] ?? "help";
 
-  if (cmd === "fund") {
-    console.log("[index] Running: fundContractFromAlice");
-    await runFundContractFromAlice();
-  } else if (cmd === "fund-small") {
-    console.log("[index] Running: runFundManySmallToContract");
-    await runFundManySmallToContract();
-  } else if (cmd === "spend") {
-    console.log("[index] Running: runSpendContractToAlice");
-    await runSpendContractToAlice();
-  } else if (cmd === "both") {
-    console.log("[index] Running: fund (large), then spend (merge to 1 UTXO)");
-    await runFundContractFromAlice();
-    await runSpendContractToAlice();
-  } else if (cmd === "small-cycle") {
+  if (cmd === "mint-all") {
+    console.log("[index] Running: runMintAllForAlice");
+    await runMintAllForAlice();
+  } else if (cmd === "burn-tokens") {
+    console.log("[index] Running: runBurnAllTokensFromAlice");
+    await runBurnAllTokensFromAlice();
+  } else if (cmd === "mean-fund") {
+    console.log("[index] Running: runMeanRevertFund (FT Alice → contract)");
+    await runMeanRevertFund();
+  } else if (cmd === "mean-rebalance") {
+    console.log("[index] Running: runMeanRevertRebalance (NFT-authorised)");
+    await runMeanRevertRebalance();
+  } else if (cmd === "mean-roundtrip") {
     console.log(
-      "[index] Running: fundManySmallToContract (batched), then spend (merge to 1 UTXO)"
+      "[index] Running: runMeanRevertRoundtrip (fund + NFT-authorised rebalance)"
     );
-
-    // Use a provider to measure Alice's BCH-only balance before & after
-    const { provider } = getProviderAndContract();
-
-    const aliceStartUtxos = await provider.getUtxos(aliceAddress);
-    const { bchOnly: aliceStartBchUtxos } = splitByToken(aliceStartUtxos);
-    const aliceStartBch = aliceStartBchUtxos.reduce(
-      (sum, u) => sum + u.satoshis,
-      0n
-    );
-
-    await runFundManySmallToContract();
-    const spendResult = await runSpendContractToAlice();
-
-    const aliceEndUtxos = await provider.getUtxos(aliceAddress);
-    const { bchOnly: aliceEndBchUtxos } = splitByToken(aliceEndUtxos);
-    const aliceEndBch = aliceEndBchUtxos.reduce(
-      (sum, u) => sum + u.satoshis,
-      0n
-    );
-
-    const netChange = aliceEndBch - aliceStartBch; // likely negative
-    const totalFees = aliceStartBch - aliceEndBch; // positive
-    const roundTrip = SMALL_FUNDING_AMOUNT * BigInt(SMALL_FUND_COUNT); // total through contract
-    const contractInputs = spendResult?.inputs?.length ?? null;
-
-    console.log("\n==== Small-cycle experiment summary ====");
-    console.log(`Alice BCH before: ${aliceStartBch} sats`);
-    console.log(`Alice BCH after : ${aliceEndBch} sats`);
-    console.log(`Net change      : ${netChange} sats`);
-    console.log(`Total miner fees (approx): ${totalFees} sats`);
+    await runMeanRevertRoundtrip();
+  } else if (cmd === "mean-drain") {
     console.log(
-      `Contract round-trip value: ${roundTrip} sats (via ${SMALL_FUND_COUNT} × ${SMALL_FUNDING_AMOUNT} sats)`
+      "[index] Running: runMeanRevertDrainAll (drain contract → Alice)"
     );
-    if (contractInputs !== null) {
-      console.log(`Contract UTXOs spent in final tx: ${contractInputs}`);
-    }
-    console.log("========================================\n");
-  } else if (cmd === "mint-tokens") {
-    console.log("[index] Running: runMintTokensForAlice");
-    await runMintTokensForAlice();
-  } else if (cmd === "token-cycle") {
-    console.log("[index] Running: runTokenContractRoundtrip");
-    await runTokenContractRoundtrip();
+    await runMeanRevertDrainAll();
+  } else if (cmd === "status") {
+    console.log("[index] Running: status");
+    await showStatus();
   } else {
-    console.log(
-      "Usage: node index.js [fund|fund-small|spend|both|small-cycle|mint-tokens|token-cycle]"
-    );
+    console.log("Usage: node index.js <command>\n");
+    console.log("Commands:");
+    console.log("  mint-all       → mint FT + NFT (atomic) to Alice");
+    console.log("  burn-tokens    → burn ALL tokens from aliceTokenAddress");
+    console.log("  mean-fund      → FT Alice → MeanRevert contract");
+    console.log("  mean-rebalance → NFT-authorised rebalance()");
+    console.log("  mean-roundtrip → fund + rebalance in one go");
+    console.log("  mean-drain     → drain ALL contract funds back to Alice");
+    console.log("  status         → show Alice UTXO summaries\n");
   }
 }
 

@@ -9,18 +9,14 @@
   "main": "index.js",
   "type": "module",
   "scripts": {
-    "fund": "node scripts/runWithAutoGit.js fund",
-    "fund-small": "node scripts/runWithAutoGit.js fund-small",
-    "spend": "node scripts/runWithAutoGit.js spend",
-    "both": "node scripts/runWithAutoGit.js both",
-    "small-cycle": "node scripts/runWithAutoGit.js small-cycle",
-
-    "burn-tokens": "node scripts/burnAllTokensFromAlice.js",
-    "mint-rebal-nft": "node scripts/mintRebalancerNftForAlice.js",
-    "mint-tokens": "node scripts/mintTokensForAlice.js",
-    "mean-revert-demo": "node scripts/meanRevertSingleTokenNFTDemo.js",
-
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "mint-all": "node index.js mint-all",
+    "burn-tokens": "node index.js burn-tokens",
+    "mean-fund": "node index.js mean-fund",
+    "mean-rebalance": "node index.js mean-rebalance",
+    "mean-roundtrip": "node index.js mean-roundtrip",
+    "mean-drain": "node index.js mean-drain",
+    "status": "node index.js status",
+    "test": "node --test"
   },
   "keywords": [],
   "author": "",

@@ -219,6 +219,11 @@ async function mintFungibleCategoryForAlice({
  *   • A minting NFT (capability: "minting")
  *   • An immutable NFT (capability: "none")
  * - For library compatibility, we also attach 1 fungible token to each NFT.
+ *
+ * DUST RULE:
+ *   - We NEVER create an output < DUST_THRESHOLD.
+ *   - If the leftover after fee is < dust, we omit the change output
+ *     and let the remainder be miner fee.
  */
 async function mintNftCategoryForAlice({ provider, genesisUtxo }) {
   console.log(`\n>>> MINTING NFT CATEGORY FOR ALICE <<<`);
@@ -247,13 +252,9 @@ async function mintNftCategoryForAlice({ provider, genesisUtxo }) {
   const nftCommitmentHex = "6e667431"; // "nft1"
 
   // ─────────────────────────────────────────────
-  // PASS 1: provisional tx (fee=0)
+  // PASS 1: provisional tx (fee=0), **NO change output**
+  //         → estimate size+fee without risking dust outputs
   // ─────────────────────────────────────────────
-  const provisionalChange = inputValue - totalNftBacking;
-  if (provisionalChange <= 0n) {
-    throw new Error("[mint-NFT] Provisional change <= 0.");
-  }
-
   const builder1 = new TransactionBuilder({ provider });
 
   builder1.addInput(genesisUtxo, sig.unlockP2PKH());
@@ -286,12 +287,6 @@ async function mintNftCategoryForAlice({ provider, genesisUtxo }) {
     },
   });
 
-  // Output 2: pure BCH change
-  builder1.addOutput({
-    to: aliceAddress,
-    amount: provisionalChange,
-  });
-
   const provisionalHex = await builder1.build();
   const byteLength = BigInt(provisionalHex.length / 2);
   const fee = byteLength * SATS_PER_BYTE;
@@ -307,6 +302,8 @@ async function mintNftCategoryForAlice({ provider, genesisUtxo }) {
 
   // ─────────────────────────────────────────────
   // PASS 2: final tx
+  //  - 2 NFT outputs as above
+  //  - Optional BCH change only if >= dust
   // ─────────────────────────────────────────────
   const builder2 = new TransactionBuilder({ provider });
 
@@ -361,10 +358,13 @@ async function mintNftCategoryForAlice({ provider, genesisUtxo }) {
 /**
  * Top-level script:
  *  - ensures there are vout=0 BCH-only UTXOs (creating one if needed)
- *  - picks 2 distinct vout=0 BCH-only UTXOs as genesis candidates
  *  - mints:
  *    1) Fungible token category → 1000 FT
- *    2) NFT category → minting NFT + immutable NFT
+ *    2) (Optionally) NFT category → minting NFT + immutable NFT
+ *
+ * If we only have **one** genesis candidate, we mint FT only and
+ * skip the NFT category here. Your dedicated rebalancer NFT script
+ * (`npm run mint-rebal-nft`) remains the source of the auth NFT.
  */
 export async function runMintTokensForAlice() {
   const { provider } = getProviderAndContract();
@@ -394,12 +394,12 @@ export async function runMintTokensForAlice() {
   if (candidates.length < 2) {
     console.warn(
       `[mint] Only ${candidates.length} genesis candidate(s) found. ` +
-        "Fungible and NFT categories will reuse the same input if needed."
+        "This script will mint the fungible category only and skip the extra NFT category.\n" +
+        "Use `npm run mint-rebal-nft` to mint the rebalancer NFT authority."
     );
   }
 
   const ftGenesis = candidates[0];
-  const nftGenesis = candidates[1] ?? candidates[0];
 
   // 1) Fungible category
   const ftResult = await mintFungibleCategoryForAlice({
@@ -411,10 +411,18 @@ export async function runMintTokensForAlice() {
 
   console.log(`\n[mint] Fungible token category ID: ${ftResult.categoryIdHex}`);
 
-  // Refresh Alice state before NFT mint
+  // Refresh Alice state after FT mint
   await logAddressState("Alice (after FT mint)", provider, aliceAddress);
 
-  // 2) NFT category
+  // If we don't have a *second* genesis candidate, stop here.
+  if (candidates.length < 2) {
+    console.log("\n>>> Minting complete (FT only; NFT category skipped).\n");
+    return;
+  }
+
+  // 2) NFT category (only if we have a distinct second candidate)
+  const nftGenesis = candidates[1];
+
   const nftResult = await mintNftCategoryForAlice({
     provider,
     genesisUtxo: nftGenesis,
