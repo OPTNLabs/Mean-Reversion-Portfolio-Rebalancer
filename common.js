@@ -11,6 +11,7 @@ import {
 
 // Generate entropy from BIP39 mnemonic phrase and initialise a root HD-wallet node
 const seed = deriveSeedFromBip39Mnemonic(
+  // "twelve word mnemonic seed phrase backup example only not secure nor valid"
   "talk story visual hidden behind wasp evil abandon bus brand circle sketch"
 );
 const rootNode = deriveHdPrivateNodeFromSeed(seed, {

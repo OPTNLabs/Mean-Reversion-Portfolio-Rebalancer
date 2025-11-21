@@ -10,9 +10,10 @@ loops
 ├─ contract.js
 ├─ contracts
 │  ├─ MeanRevertSingleTokenNFTAuth.cash
-│  └─ SumInputs.cash
+│  └─ MeanRevertSingleTokenNFTAuthV2.cash
 ├─ index.js
 ├─ legacy
+│  ├─ SumInputs.cash
 │  ├─ autoGit.js
 │  ├─ fundContractFromAlice.js
 │  ├─ meanRevertRoundtrip.js
@@ -22,12 +23,24 @@ loops
 │  ├─ runWithAutoGit.js
 │  ├─ spendContractToAlice.js
 │  └─ tokenContractRoundtrip.js
+├─ oracles
+│  ├─ fetchOraclePrice.js
+│  ├─ oraclesClient.js
+│  └─ priceCodec.js
 ├─ package-lock.json
 ├─ package.json
 ├─ scripts
 │  ├─ burnAllTokensFromAlice.js
+│  ├─ fetchOraclePrice.js
 │  ├─ meanRevert.js
-│  └─ mintAllForAlice.js
+│  ├─ meanRevert.oracleRebalancer.js
+│  ├─ mintAllForAlice.js
+│  └─ rebalanceWithOracleV2.js
+├─ tests
+│  ├─ meanRevert.behaviour.mocknet.test.js
+│  ├─ meanRevert.mocknet.test.js
+│  ├─ meanRevert.v2.mocknet.test.js
+│  └─ priceCodec.test.js
 └─ utxos.js
 
 ```

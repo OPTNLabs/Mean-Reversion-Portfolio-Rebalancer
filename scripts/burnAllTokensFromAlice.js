@@ -151,3 +151,11 @@ export async function runBurnAllTokensFromAlice() {
 
   console.log("\n✅ All selected token UTXOs were burned to a BCH-only UTXO.");
 }
+
+// --- CLI runner ---
+if (import.meta.url === `file://${process.argv[1]}`) {
+  runBurnAllTokensFromAlice().catch((err) => {
+    console.error("Error in burnAllTokensFromAlice script:", err);
+    process.exit(1);
+  });
+}

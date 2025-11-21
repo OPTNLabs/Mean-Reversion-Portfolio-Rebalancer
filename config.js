@@ -51,3 +51,30 @@ export const DUST_THRESHOLD = 546n;
 //    when you build demos that fan-out to multiple recipients.
 //
 export const SPEND_SPLIT_OUTPUTS = 4;
+
+// ---------------------------------------------------------------------------
+// Mean Revert V2 / CashTokens demo constants
+// ---------------------------------------------------------------------------
+//
+// NOTE:
+// These are demo-specific, network-specific values for chipnet.
+// If you re-run mintAllForAlice and get new FT/NFT categories, update these.
+//
+// - FT_CATEGORY_HEX comes from the FT genesis UTXO (vout=0) you chose
+// - NFT_CATEGORY_HEX comes from the NFT genesis UTXO (vout=0)
+// - REBALANCER_NFT_COMMITMENT_HEX is the NFT commitment used in the covenant
+// - TARGET_TOKENS is the contract's targetTokenAmount
+// - INITIAL_TOKENS_ON_CONTRACT is how many FT you want to park on contract
+//   in the funding demo (e.g. 800 vs target 1000).
+
+export const FT_CATEGORY_HEX =
+  "e7a23b03be4230501026f404dd8b5a2ee1331ea1022c39cc5acf9ad6696b4d75";
+
+export const NFT_CATEGORY_HEX =
+  "0c2ee23898e3697fd302e6525057e8946db0dc75417fbf0ede76c8177d2b2bc8";
+
+export const REBALANCER_NFT_COMMITMENT_HEX = "6e667430"; // "nft0"
+
+export const TARGET_TOKENS = 1000n;
+
+export const INITIAL_TOKENS_ON_CONTRACT = 800n;

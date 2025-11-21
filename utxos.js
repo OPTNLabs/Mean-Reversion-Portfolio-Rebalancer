@@ -11,6 +11,15 @@
 import { formatSats } from "./bigint.js";
 
 /**
+ * Internal helper: normalize a UTXO's satoshi value to BigInt.
+ */
+function utxoValueBigInt(utxo) {
+  const v = utxo.satoshis ?? utxo.value;
+  if (v === undefined) return 0n;
+  return BigInt(v);
+}
+
+/**
  * Split UTXOs into BCH-only vs token-bearing.
  *
  * A token UTXO is any UTXO with a non-null `token` field (as returned
@@ -43,4 +52,73 @@ export function groupTokenUtxosByCategory(tokenUtxos) {
     map.set(cat, arr);
   }
   return map;
+}
+
+/**
+ * Pretty-print the state of an address (or contract address).
+ *
+ * - Fetches UTXOs via the provided `provider`
+ * - Logs total count, BCH-only vs token-bearing counts
+ * - Logs total BCH balance
+ * - Returns the raw UTXO array so callers can continue processing.
+ */
+export async function logAddressState(label, provider, address) {
+  console.log(`\n=== ${label} UTXOs ===`);
+  console.log(`Address: ${address}`);
+
+  const utxos = await provider.getUtxos(address);
+  console.log(`Total UTXOs: ${utxos.length}`);
+
+  const { bchOnly, withTokens } = splitByToken(utxos);
+  console.log(`  BCH-only UTXOs  : ${bchOnly.length}`);
+  console.log(`  Token UTXOs     : ${withTokens.length}`);
+
+  const total = utxos.reduce((s, u) => s + utxoValueBigInt(u), 0n);
+  console.log(`Total BCH (all UTXOs): ${formatSats(total)} (sats)`);
+
+  return utxos;
+}
+
+/**
+ * Detailed logging of token-bearing UTXOs.
+ *
+ * For each UTXO, logs:
+ *  - txid:vout
+ *  - BCH value
+ *  - token.category
+ *  - token.amount
+ *  - NFT commitment (if present)
+ */
+export function logTokenUtxosDetailed(label, tokenUtxos) {
+  console.log(`\n=== ${label} token UTXOs ===`);
+  if (!tokenUtxos.length) {
+    console.log("(none)");
+    return;
+  }
+
+  tokenUtxos.forEach((u, i) => {
+    const v = utxoValueBigInt(u);
+    const t = u.token;
+    const nftCommit = t?.nft?.commitment;
+    console.log(
+      ` [${i}] txid=${u.txid} vout=${u.vout} ` +
+        `value=${formatSats(v)} sats | ` +
+        `category=${t?.category} amount=${t?.amount}` +
+        (nftCommit ? ` nftCommit=${nftCommit}` : "")
+    );
+  });
+}
+
+export async function logContractState(label, contract) {
+  const utxos = await contract.getUtxos();
+  logUtxoSummary(label, utxos);
+  return utxos;
+}
+
+// --- CLI runner ---
+if (import.meta.url === `file://${process.argv[1]}`) {
+  runMintAllForAlice().catch((err) => {
+    console.error("Error in mintAllForAlice script:", err);
+    process.exit(1);
+  });
 }

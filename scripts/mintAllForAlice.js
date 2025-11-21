@@ -2,9 +2,9 @@
 //
 // FINAL CLEAN VERSION (MODULED)
 // ---------------------------------------------------------
-// - No artificial genesis txs
-// - Uses INPUT[0] as FT category
-// - Uses INPUT[1] as NFT category
+// - Uses real CashTokens rules:
+//     * FT category = txid of a UTXO with vout=0 we spend as input
+//     * NFT category = txid of a *different* UTXO with vout=0
 // - Mints both FT + NFT in ONE atomic transaction
 // - Each token output backed by EXACTLY 1000 sats
 // - Change returns all remaining BCH to aliceAddress
@@ -69,7 +69,7 @@ function logFundingSummary(bchOnly) {
  * Run the FT+NFT atomic mint for Alice.
  *
  * - consumes all BCH-only UTXOs from aliceAddress
- * - uses the 2 largest UTXOs as FT/NFT genesis categories
+ * - uses TWO UTXOs with vout=0 as FT/NFT genesis categories
  * - mints:
  *    * FT: 1000 tokens in FT_GENESIS.txid
  *    * NFT: pure NFT in NFT_GENESIS.txid with commitment "6e667430"
@@ -98,13 +98,47 @@ export async function runMintAllForAlice() {
         "Hint: fund aliceAddress (P2PKH) with more BCH on chipnet."
     );
 
-  // sort largest-first
-  bchOnly.sort((a, b) => Number(utxoValue(b) - utxoValue(a)));
+  // --- NEW: pick genesis inputs that actually satisfy CashTokens rules ---
+  // We need TWO *different* prevouts with vout=0 to serve as:
+  //   - FT genesis category
+  //   - NFT genesis category
+  const genesisCandidates = bchOnly.filter((u) => u.vout === 0);
 
-  const FT_GENESIS = bchOnly[0];
-  const NFT_GENESIS = bchOnly[1];
+  console.log(
+    `\n[genesis] Found ${genesisCandidates.length} candidate UTXOs with vout=0`
+  );
+  genesisCandidates.forEach((u, i) => {
+    console.log(
+      `  [${i}] txid=${u.txid} vout=${u.vout} sats=${utxoValue(u).toString()}`
+    );
+  });
 
-  console.log("\nUsing genesis inputs (largest-first):");
+  if (genesisCandidates.length < 2) {
+    throw new Error(
+      [
+        "",
+        "[mint] Need at least TWO BCH-only UTXOs with vout=0 to act as",
+        "       FT and NFT genesis inputs (per CashTokens rules).",
+        "",
+        "Current situation:",
+        `  - BCH-only UTXOs total: ${bchOnly.length}`,
+        `  - vout=0 BCH-only UTXOs: ${genesisCandidates.length}`,
+        "",
+        "Fix:",
+        "  - Send yourself 1–2 self-transactions so that you own multiple",
+        "    UTXOs where outpoint index (vout) === 0, then rerun mintAllForAlice.",
+        "",
+      ].join("\n")
+    );
+  }
+
+  // Prefer the largest vout=0 UTXOs for categories (purely cosmetic).
+  genesisCandidates.sort((a, b) => Number(utxoValue(b) - utxoValue(a)));
+
+  const FT_GENESIS = genesisCandidates[0];
+  const NFT_GENESIS = genesisCandidates[1];
+
+  console.log("\nUsing genesis inputs (vout=0, largest-first):");
   console.log("FT (fungible category source):", safeJson(FT_GENESIS));
   console.log("NFT (NFT category source):", safeJson(NFT_GENESIS));
 
@@ -115,6 +149,8 @@ export async function runMintAllForAlice() {
 
   const est = new TransactionBuilder({ provider });
 
+  // We still spend *all* BCH-only UTXOs as inputs (not just genesis ones),
+  // so large balances still work exactly like before.
   bchOnly.forEach((u) => est.addInput(u, tmpl.unlockP2PKH()));
 
   const FT_BACK = 1000n;
@@ -218,4 +254,12 @@ export async function runMintAllForAlice() {
   );
   console.log("Use these when wiring up covenant contracts.\n");
   console.log("=== DONE ===\n");
+}
+
+// --- CLI runner ---
+if (import.meta.url === `file://${process.argv[1]}`) {
+  runMintAllForAlice().catch((err) => {
+    console.error("Error in mintAllForAlice script:", err);
+    process.exit(1);
+  });
 }
