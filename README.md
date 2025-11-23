@@ -1,4 +1,3 @@
-```markdown
 # MRX – Mean-Reversion Portfolio Rebalancer (Chipnet Demo)
 
 MRX is an **NFT-gated, oracle-driven mean-reversion strategy** between:
@@ -382,4 +381,3 @@ From the `loops/` root:
 ### License
 
 MIT (or equivalent permissive license) – © OPTNLabs 2025.
-```
