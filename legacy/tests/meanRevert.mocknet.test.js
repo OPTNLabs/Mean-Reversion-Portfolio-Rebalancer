@@ -24,7 +24,7 @@ import {
   alicePkh,
   aliceTokenAddress,
   aliceAddress,
-} from "../common.js";
+} from "../../common.js";
 
 // -----------------------------------------------------------------------------
 // Dust & token funding rules

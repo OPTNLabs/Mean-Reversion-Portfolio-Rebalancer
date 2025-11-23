@@ -43,7 +43,7 @@ export const SATS_PER_BYTE = 1n;
 //  - DUST_THRESHOLD: minimum value for a BCH output to be considered
 //    economically spendable. For BCH this is commonly 546 sats.
 //
-export const DUST_THRESHOLD = 546n;
+export const DUST_THRESHOLD = 1000n;
 
 //
 // Contract spend splitting
@@ -68,10 +68,10 @@ export const SPEND_SPLIT_OUTPUTS = 4;
 //   in the funding demo (e.g. 800 vs target 1000).
 
 export const FT_CATEGORY_HEX =
-  "e7a23b03be4230501026f404dd8b5a2ee1331ea1022c39cc5acf9ad6696b4d75";
+  "72841fa040aeeaeb4b3b08a7b74794cfddd97e3eac519c5290de44b5a297624c";
 
 export const NFT_CATEGORY_HEX =
-  "0c2ee23898e3697fd302e6525057e8946db0dc75417fbf0ede76c8177d2b2bc8";
+  "06165b5aecd9b02a29bb12b08446d4ed01e7bde60035287ebb12fd4b6d2c2553";
 
 export const REBALANCER_NFT_COMMITMENT_HEX = "6e667430"; // "nft0"
 

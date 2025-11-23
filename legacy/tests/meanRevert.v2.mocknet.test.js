@@ -21,7 +21,7 @@ import {
   alicePkh,
   aliceTokenAddress,
   aliceAddress,
-} from "../common.js";
+} from "../../common.js";
 
 const DUST_LIMIT = 546n;
 const TOKEN_OUTPUT_SATS = 1000n;

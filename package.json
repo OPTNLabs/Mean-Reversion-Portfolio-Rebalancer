@@ -16,7 +16,7 @@
     "mean-roundtrip": "node index.js mean-roundtrip",
     "mean-drain": "node index.js mean-drain",
     "status": "node index.js status",
-    "test": "node --test"
+    "test": "node --test tests/*.test.js"
   },
   "keywords": [],
   "author": "",
