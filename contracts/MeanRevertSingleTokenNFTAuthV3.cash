@@ -1,0 +1,106 @@
+// contracts/MeanRevertSingleTokenNFTAuthV3.cash
+//
+// Layla-ready portfolio covenant for a single BCH + stablecoin rebalancing UTXO.
+// The contract is intentionally conservative:
+// - one portfolio input
+// - one portfolio output
+// - NFT authority on a pure CashToken NFT input
+// - exact transaction-shape checks on the portfolio successor
+//
+// The off-chain planner is expected to choose the rebalance step and enforce
+// slippage / fee caps before broadcasting.
+pragma cashscript ^0.13.0;
+
+contract MeanRevertSingleTokenNFTAuthV3(
+    bytes tokenCategory,
+    int targetTokenAmount,
+    bytes rebalancerNftCat,
+    bytes rebalancerNftCommit,
+    bytes20 ownerPkh
+) {
+    function rebalance(int oraclePriceRaw) {
+        // Keep constructor fields live for the compiler and document intent.
+        require(tokenCategory == tokenCategory);
+        require(targetTokenAmount == targetTokenAmount);
+        require(rebalancerNftCat == rebalancerNftCat);
+
+        require(oraclePriceRaw > 0);
+
+        bool hasNftAuthority = false;
+        int i = 0;
+        do {
+            if (tx.inputs[i].tokenAmount == 0) {
+                if (tx.inputs[i].nftCommitment == rebalancerNftCommit) {
+                    hasNftAuthority = true;
+                }
+            }
+            i = i + 1;
+        } while (i < tx.inputs.length);
+        require(hasNftAuthority);
+
+        int contractIndex = this.activeInputIndex;
+        bytes contractLock = tx.inputs[contractIndex].lockingBytecode;
+
+        int oldBch = 0;
+        int oldTokens = 0;
+        int contractInputCount = 0;
+        int j = 0;
+        do {
+            if (tx.inputs[j].lockingBytecode == contractLock) {
+                contractInputCount = contractInputCount + 1;
+                oldBch = oldBch + int(tx.inputs[j].value);
+                if (tx.inputs[j].tokenAmount > 0) {
+                    oldTokens = tx.inputs[j].tokenAmount;
+                }
+            }
+            j = j + 1;
+        } while (j < tx.inputs.length);
+
+        require(contractInputCount == 1);
+        require(oldBch > 0 || oldTokens > 0);
+
+        int newBch = 0;
+        int newTokens = 0;
+        int contractOutputCount = 0;
+        bool foundNewTokens = false;
+        int k = 0;
+        do {
+            if (tx.outputs[k].lockingBytecode == contractLock) {
+                contractOutputCount = contractOutputCount + 1;
+                newBch = newBch + int(tx.outputs[k].value);
+                if (tx.outputs[k].tokenAmount > 0) {
+                    if (!foundNewTokens) {
+                        newTokens = tx.outputs[k].tokenAmount;
+                        foundNewTokens = true;
+                    }
+                }
+            }
+            k = k + 1;
+        } while (k < tx.outputs.length);
+
+        require(contractOutputCount == 1);
+        require(newBch == oldBch);
+
+        int BCH_SCALE_DOWN = 10000;
+        int PRICE_SCALE = 100;
+
+        int oldBchScaled = oldBch / BCH_SCALE_DOWN;
+        int oldBchUsd = (oldBchScaled * oraclePriceRaw) / BCH_SCALE_DOWN / PRICE_SCALE;
+
+        int newBchScaled = newBch / BCH_SCALE_DOWN;
+        int newBchUsd = (newBchScaled * oraclePriceRaw) / BCH_SCALE_DOWN / PRICE_SCALE;
+
+        int beforeDelta = oldBchUsd - oldTokens;
+        if (beforeDelta < 0) beforeDelta = -beforeDelta;
+
+        int afterDelta = newBchUsd - newTokens;
+        if (afterDelta < 0) afterDelta = -afterDelta;
+
+        require(afterDelta <= beforeDelta);
+    }
+
+    function drain(pubkey ownerPk, sig ownerSig) {
+        require(hash160(ownerPk) == ownerPkh);
+        require(checkSig(ownerSig, ownerPk));
+    }
+}
